@@ -401,6 +401,11 @@ export default function TeacherDashboard({
                           {headline.math.parsed.history.slice(-3).join(' → ')}
                         </div>
                       ) : null}
+                      {headline.math?.baselineScore && (
+                        <div className="text-[9px] text-slate-400 font-mono mt-0.5 truncate">
+                          Baseline: {headline.math.baselineScore}%
+                        </div>
+                      )}
                     </div>
 
                   </div>

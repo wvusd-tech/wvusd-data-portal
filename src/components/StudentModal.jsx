@@ -344,11 +344,43 @@ export default function StudentModal({
                           </div>
                         )}
 
+                        {/* Standalone Baseline Score if present for this assessment family (not compared) */}
+                        {comp.baselineCol && (
+                          <div className="flex items-center justify-between text-[11px] bg-white px-2.5 py-1.5 rounded-lg border border-slate-200/80">
+                            <span className="text-slate-500 font-semibold">
+                              {comp.baselineCol.label || 'Baseline'} (Score Only):
+                            </span>
+                            <span className="font-mono font-bold text-slate-700">
+                              {comp.baselineCol.parsed.latest}
+                            </span>
+                          </div>
+                        )}
+
                         <div className="text-[11px] text-slate-500">
                           {comp.growth.description}
                         </div>
                       </div>
                     ))}
+                  </div>
+                )}
+
+                {/* Standalone Baseline Scores (Listed as scores only, never compared) */}
+                {student.baselineScores?.length > 0 && (
+                  <div className="mt-4 p-3.5 rounded-2xl border border-slate-200 bg-slate-50/60 flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">
+                      Baseline Assessment Scores (Reference Only):
+                    </span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {student.baselineScores.map((b, idx) => (
+                        <span
+                          key={`${b.header}-${idx}`}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-xs font-semibold text-slate-700 shadow-2xs"
+                        >
+                          <span className="text-slate-500">{b.year ? `${b.year} ` : ''}{b.family} Baseline:</span>
+                          <strong className="text-slate-900 font-extrabold">{b.parsed.latest}</strong>
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
