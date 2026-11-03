@@ -253,12 +253,12 @@ export default function StudentModal({
               <div>
                 <h4 className="text-sm font-extrabold text-slate-900 uppercase tracking-wider mb-3 flex items-center gap-2">
                   <TrendingUp className="w-4 h-4 text-blue-600" />
-                  Multi-Year Comparative Growth (Matched Across Live Years)
+                  Trimester & Multi-Year Comparative Growth
                 </h4>
                 
                 {student.yoyComparisons.length === 0 ? (
                   <div className="p-6 rounded-2xl border border-slate-200 bg-slate-50 text-center text-xs text-slate-500">
-                    Baseline assessment data currently recorded for this student. No multi-year pairing detected yet.
+                    Baseline assessment data currently recorded for this student. No comparative pairing detected yet.
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -281,20 +281,49 @@ export default function StudentModal({
 
                         <div className="grid grid-cols-2 gap-2 text-center bg-white p-2.5 rounded-xl border border-slate-200/80">
                           <div>
-                            <div className="text-[10px] text-slate-400 font-semibold">{comp.prevYear}</div>
+                            <div className="text-[10px] text-slate-400 font-semibold truncate" title={comp.prevYear}>
+                              {comp.prevYear}
+                            </div>
                             <div className="text-base font-extrabold text-slate-800 truncate">
                               {comp.prev.parsed.latest || 'N/A'}
                             </div>
                           </div>
                           <div className="border-l border-slate-100 pl-2">
-                            <div className="text-[10px] text-slate-400 font-semibold">{comp.currYear}</div>
+                            <div className="text-[10px] text-slate-400 font-semibold truncate" title={comp.currYear}>
+                              {comp.currYear}
+                            </div>
                             <div className="text-base font-extrabold text-blue-600 truncate">
                               {comp.curr.parsed.latest || 'N/A'}
                             </div>
                           </div>
                         </div>
 
-                        {/* Multi-Attempt Progression Trail */}
+                        {/* Checkpoint Progression Trail (Baseline -> Tri 1 -> Tri 2 -> Tri 3) */}
+                        {comp.checkpoints && comp.checkpoints.length > 2 && (
+                          <div>
+                            <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                              Checkpoint Progression:
+                            </div>
+                            <div className="flex flex-wrap items-center gap-1 font-mono text-[10px]">
+                              {comp.checkpoints.map((cp, idx) => (
+                                <React.Fragment key={`${cp.header}-${idx}`}>
+                                  <span className={`px-1.5 py-0.5 rounded border ${
+                                    idx === comp.checkpoints.length - 1
+                                      ? 'bg-blue-50 text-blue-700 font-bold border-blue-200'
+                                      : 'bg-white text-slate-600 border-slate-200'
+                                  }`}>
+                                    {cp.period || cp.year}: {cp.parsed.latest}
+                                  </span>
+                                  {idx < comp.checkpoints.length - 1 && (
+                                    <ChevronRight className="w-3 h-3 text-slate-400 shrink-0" />
+                                  )}
+                                </React.Fragment>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Multi-Attempt Progression Trail within a single cell */}
                         {comp.curr.parsed.history.length > 1 && (
                           <div>
                             <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
@@ -406,6 +435,11 @@ export default function StudentModal({
                           {col.year && (
                             <span className="px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 font-bold">
                               {col.year}
+                            </span>
+                          )}
+                          {col.period && (
+                            <span className="px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-700 font-bold">
+                              {col.period}
                             </span>
                           )}
                           <span className="truncate">{col.family}</span>

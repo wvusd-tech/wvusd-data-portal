@@ -236,17 +236,51 @@ export function computeYoYGrowth(prevValue, currValue, family = '') {
 }
 
 /**
- * Helper to dynamically detect academic year prefix and group into assessment family
+ * Extracts trimester / baseline checkpoint ordering from an assessment header.
+ * Progression order within an academic year:
+ *   0: Baseline / BOY / Diagnostic / Pre-Test
+ *   1: Tri 1 / Trimester 1 / T1 / Fall
+ *   2: Tri 2 / Trimester 2 / T2 / Winter / MOY
+ *   3: Tri 3 / Trimester 3 / T3 / Spring / EOY / Post-Test
+ *  99: General / Unspecified period (annual column)
+ */
+export function extractPeriodInfo(text) {
+  if (!text || typeof text !== 'string') {
+    return { period: null, periodOrder: 99 };
+  }
+
+  if (/\bbaseline\b|\bboy\b|\bbeginning of year\b|\bpre-?test\b|\bdiagnostic\b/i.test(text)) {
+    return { period: 'Baseline', periodOrder: 0 };
+  }
+  if (/\btrimester\s*1\b|\btri\.?\s*1\b|\bt1\b|\bfall\b/i.test(text)) {
+    return { period: 'Tri 1', periodOrder: 1 };
+  }
+  if (/\btrimester\s*2\b|\btri\.?\s*2\b|\bt2\b|\bwinter\b|\bmoy\b|\bmiddle of year\b/i.test(text)) {
+    return { period: 'Tri 2', periodOrder: 2 };
+  }
+  if (/\btrimester\s*3\b|\btri\.?\s*3\b|\bt3\b|\bspring\b|\beoy\b|\bend of year\b|\bpost-?test\b/i.test(text)) {
+    return { period: 'Tri 3', periodOrder: 3 };
+  }
+
+  return { period: null, periodOrder: 99 };
+}
+
+/**
+ * Helper to dynamically detect academic year prefix, trimester/baseline period,
+ * and group into a normalized assessment family.
  */
 export function extractMetricInfo(header) {
-  if (!header || typeof header !== 'string') return { year: null, base: '', family: '' };
+  if (!header || typeof header !== 'string') {
+    return { year: null, rest: '', family: '', period: null, periodOrder: 99, label: '' };
+  }
   
   const yearMatch = header.match(/^(\d{4}-\d{4})\s+(.*)$/);
   const year = yearMatch ? yearMatch[1] : null;
   const rest = (yearMatch ? yearMatch[2] : header).trim();
+  const { period, periodOrder } = extractPeriodInfo(rest);
 
   let family = rest;
-  // Dynamic normalization to pair across years
+  // Dynamic normalization to pair across years and trimesters
   if (/amira.*arm/i.test(rest) && !/level|status|risk/i.test(rest)) {
     family = 'Amira ARM Fluency';
   } else if (/amira.*dyslexia.*status/i.test(rest)) {
@@ -255,7 +289,7 @@ export function extractMetricInfo(header) {
     family = 'STAR Reading IRL';
   } else if (/star.*math/i.test(rest)) {
     family = 'STAR Math';
-  } else if (/oral reading record|orr/i.test(rest)) {
+  } else if (/oral reading record|\borr\b/i.test(rest)) {
     family = 'Oral Reading Record (ORR)';
   } else if (/\bmath\b.*percent/i.test(rest) || /math common assessment/i.test(rest)) {
     family = 'Math Common Assessment';
@@ -283,9 +317,19 @@ export function extractMetricInfo(header) {
     family = 'Decoding Words';
   } else if (/digraph/i.test(rest)) {
     family = 'Digraphs & Vowel Sounds';
+  } else {
+    // Strip grade prefix (e.g. "3rd Grade", "4th Grade") and period token ("Baseline", "Tri 1", etc.)
+    // so custom assessments automatically pair across Baseline -> Tri 1 -> Tri 2 -> Tri 3 and across years
+    family = rest
+      .replace(/^(?:1st|2nd|3rd|4th|5th|k|tk|kindergarten|\d+(?:st|nd|rd|th)?)\s*grade\s+/i, '')
+      .replace(/\b(?:baseline|beginning of year|boy|pre-?test|diagnostic|trimester\s*[123]|tri\.?\s*[123]|t[123]|fall|winter|spring|moy|eoy|post-?test)\b/gi, '')
+      .replace(/\s{2,}/g, ' ')
+      .trim() || rest;
   }
 
-  return { year, rest, family };
+  const label = [year, period].filter(Boolean).join(' ') || year || period || 'Current';
+
+  return { year, rest, family, period, periodOrder, label };
 }
 
 /**
@@ -418,7 +462,23 @@ export function parseStudentRecord(raw) {
   // Parse all columns by tab
   const parsedTabs = {};
   const allParsedColumns = [];
-  const familyYearMap = {};
+  const familyCheckpointsMap = {};
+
+  const registerColumnCheckpoint = (colObj) => {
+    if (colObj.parsed.latestNumeric === null) return;
+    if (!colObj.year && !colObj.period) return;
+    if (!familyCheckpointsMap[colObj.family]) {
+      familyCheckpointsMap[colObj.family] = [];
+    }
+    const existingIdx = familyCheckpointsMap[colObj.family].findIndex(
+      c => c.header === colObj.header || (c.year === colObj.year && c.period && c.period === colObj.period)
+    );
+    if (existingIdx >= 0) {
+      familyCheckpointsMap[colObj.family][existingIdx] = colObj;
+    } else {
+      familyCheckpointsMap[colObj.family].push(colObj);
+    }
+  };
 
   for (const [tabName, tabData] of Object.entries(rawAssessmentsByTab)) {
     parsedTabs[tabName] = [];
@@ -436,19 +496,19 @@ export function parseStudentRecord(raw) {
         tab: tabName,
         header,
         year: info.year,
+        period: info.period,
+        periodOrder: info.periodOrder,
+        label: info.label,
         baseName: info.rest,
         family: info.family,
         rawVal: val,
-        parsed
+        parsed,
+        colIndex: allParsedColumns.length
       };
 
       parsedTabs[tabName].push(colObj);
       allParsedColumns.push(colObj);
-
-      if (info.year) {
-        if (!familyYearMap[info.family]) familyYearMap[info.family] = {};
-        familyYearMap[info.family][info.year] = colObj;
-      }
+      registerColumnCheckpoint(colObj);
     }
   }
 
@@ -465,37 +525,100 @@ export function parseStudentRecord(raw) {
         tab: 'General',
         header,
         year: info.year,
+        period: info.period,
+        periodOrder: info.periodOrder,
+        label: info.label,
         baseName: info.rest,
         family: info.family,
         rawVal: val,
-        parsed
+        parsed,
+        colIndex: allParsedColumns.length
       };
       allParsedColumns.push(colObj);
-      if (info.year) {
-        if (!familyYearMap[info.family]) familyYearMap[info.family] = {};
-        familyYearMap[info.family][info.year] = colObj;
-      }
+      registerColumnCheckpoint(colObj);
     }
   }
 
-  // Dynamic Multi-Year Comparisons
+  // Dynamic Trimester-over-Trimester (Baseline -> Tri 1 -> Tri 2 -> Tri 3) & Multi-Year Comparisons
   const yoyComparisons = [];
-  for (const [family, years] of Object.entries(familyYearMap)) {
-    const sortedYears = Object.keys(years).sort();
-    if (sortedYears.length >= 2) {
-      const prevCol = years[sortedYears[0]];
-      const currCol = years[sortedYears[sortedYears.length - 1]];
-      const growth = computeYoYGrowth(prevCol.parsed, currCol.parsed, family);
-      if (growth.status !== 'unknown') {
-        yoyComparisons.push({
-          family,
-          prevYear: sortedYears[0],
-          currYear: sortedYears[sortedYears.length - 1],
-          prev: prevCol,
-          curr: currCol,
-          growth
+  for (const [family, checkpoints] of Object.entries(familyCheckpointsMap)) {
+    if (checkpoints.length < 2) continue;
+
+    // Sort checkpoints chronologically: Year ASC -> Period Order (Baseline, Tri 1, Tri 2, Tri 3) ASC -> Column Index ASC
+    const sorted = [...checkpoints].sort((a, b) => {
+      const yearCmp = (a.year || '').localeCompare(b.year || '');
+      if (yearCmp !== 0) return yearCmp;
+      if (a.periodOrder !== b.periodOrder) return a.periodOrder - b.periodOrder;
+      return (a.colIndex ?? 0) - (b.colIndex ?? 0);
+    });
+
+    // Group by academic year to prioritize consecutive current-year checkpoints (Baseline -> Tri 1, Tri 1 -> Tri 2, Tri 2 -> Tri 3)
+    const byYear = {};
+    for (const cp of sorted) {
+      const yKey = cp.year || 'Current';
+      if (!byYear[yKey]) byYear[yKey] = [];
+      byYear[yKey].push(cp);
+    }
+    const yearsList = Object.keys(byYear).sort();
+    const latestYearKey = yearsList[yearsList.length - 1];
+    const latestYearCheckpoints = byYear[latestYearKey] || [];
+
+    let prevCol = null;
+    let currCol = null;
+
+    if (latestYearCheckpoints.length >= 2) {
+      // Compare latest two consecutive checkpoints in the current academic year:
+      // e.g. Baseline -> Tri 1, then Tri 1 -> Tri 2, then Tri 2 -> Tri 3
+      prevCol = latestYearCheckpoints[latestYearCheckpoints.length - 2];
+      currCol = latestYearCheckpoints[latestYearCheckpoints.length - 1];
+    } else {
+      // Only 1 checkpoint in the latest year so far -> compare against the latest checkpoint from the prior year
+      prevCol = sorted[sorted.length - 2];
+      currCol = sorted[sorted.length - 1];
+    }
+
+    // Build all consecutive step-by-step comparisons for deep-dive display
+    const stepComparisons = [];
+    for (let i = 1; i < sorted.length; i++) {
+      const stepPrev = sorted[i - 1];
+      const stepCurr = sorted[i];
+      const stepGrowth = computeYoYGrowth(stepPrev.parsed, stepCurr.parsed, family);
+      if (stepGrowth.status !== 'unknown') {
+        const sameYr = stepPrev.year && stepPrev.year === stepCurr.year;
+        stepComparisons.push({
+          fromLabel: sameYr && stepPrev.period ? `${stepPrev.year} ${stepPrev.period}` : (stepPrev.label || stepPrev.year || 'Prev'),
+          toLabel: sameYr && stepCurr.period ? `${stepCurr.year} ${stepCurr.period}` : (stepCurr.label || stepCurr.year || 'Curr'),
+          shortFrom: stepPrev.period || stepPrev.year || 'Prev',
+          shortTo: stepCurr.period || stepCurr.year || 'Curr',
+          year: stepCurr.year,
+          prev: stepPrev,
+          curr: stepCurr,
+          growth: stepGrowth
         });
       }
+    }
+
+    const growth = computeYoYGrowth(prevCol.parsed, currCol.parsed, family);
+    if (growth.status !== 'unknown') {
+      const isSameYear = prevCol.year && prevCol.year === currCol.year;
+      const prevLabel = prevCol.label || prevCol.year || prevCol.period || 'Previous';
+      const currLabel = currCol.label || currCol.year || currCol.period || 'Current';
+      const shortTransition = isSameYear && prevCol.period && currCol.period
+        ? `${prevCol.period} → ${currCol.period}`
+        : `${prevLabel} → ${currLabel}`;
+
+      yoyComparisons.push({
+        family,
+        prevYear: prevLabel,
+        currYear: currLabel,
+        shortTransition,
+        isSameYear,
+        prev: prevCol,
+        curr: currCol,
+        growth,
+        checkpoints: sorted,
+        stepComparisons
+      });
     }
   }
 
@@ -520,23 +643,54 @@ export function parseStudentRecord(raw) {
 
   // Detect Headline Metrics for the Student Card (from whichever ELA & Math tabs matched!)
   const findFamilyLatest = (famPattern) => {
-    // Look first in multi-year curr, then in all parsed columns
-    const matched = allParsedColumns.filter(c => famPattern.test(c.family) || famPattern.test(c.header));
+    const matched = allParsedColumns.filter(
+      c => (famPattern.test(c.family) || famPattern.test(c.header)) && c.parsed.latestNumeric !== null
+    );
     if (matched.length === 0) return null;
-    // Prefer column with recent year or latest score
-    matched.sort((a, b) => (b.year || '').localeCompare(a.year || ''));
-    return matched[0];
+    // Prefer column with most recent academic year, then latest trimester (Tri 3 > Tri 2 > Tri 1 > Baseline), then rightmost column
+    matched.sort((a, b) => {
+      const yearCmp = (b.year || '').localeCompare(a.year || '');
+      if (yearCmp !== 0) return yearCmp;
+      const orderA = a.periodOrder !== undefined && a.periodOrder !== 99 ? a.periodOrder : -1;
+      const orderB = b.periodOrder !== undefined && b.periodOrder !== 99 ? b.periodOrder : -1;
+      if (orderB !== orderA) return orderB - orderA;
+      return (b.colIndex ?? 0) - (a.colIndex ?? 0);
+    });
+
+    const latestCol = { ...matched[0] };
+    // Attach same-year checkpoint trail (e.g. Baseline -> Tri 1 -> Tri 2 -> Tri 3)
+    const sameYearCols = matched
+      .filter(c => c.year === latestCol.year && c.family === latestCol.family)
+      .sort((a, b) => {
+        if (a.periodOrder !== b.periodOrder) return a.periodOrder - b.periodOrder;
+        return (a.colIndex ?? 0) - (b.colIndex ?? 0);
+      });
+    if (sameYearCols.length > 1) {
+      latestCol.checkpointTrail = sameYearCols.map(c => ({
+        label: c.period || c.year || 'Score',
+        value: c.parsed.latest
+      }));
+    }
+    return latestCol;
   };
 
   const amiraCol = findFamilyLatest(/amira.*arm/i);
   const starCol = findFamilyLatest(/star.*reading/i);
-  const orrCol = findFamilyLatest(/orr|oral reading/i);
+  const orrCol = findFamilyLatest(/\borr\b|oral reading/i);
   const mathCol = findFamilyLatest(/math.*percent|math common/i);
   const phonicsCol = findFamilyLatest(/phonics|decoding|sound segmentation/i);
 
-  // Extract Phonics Subtests dynamically if present
+  // Extract Phonics Subtests dynamically if present (sorted so latest year & latest trimester come first)
   const phonics = allParsedColumns
     .filter(c => /blending|isolating|segmentation|manipulating|decoding|vowel|phonics/i.test(c.header))
+    .sort((a, b) => {
+      const yearCmp = (b.year || '').localeCompare(a.year || '');
+      if (yearCmp !== 0) return yearCmp;
+      const orderA = a.periodOrder !== undefined && a.periodOrder !== 99 ? a.periodOrder : -1;
+      const orderB = b.periodOrder !== undefined && b.periodOrder !== 99 ? b.periodOrder : -1;
+      if (orderB !== orderA) return orderB - orderA;
+      return (b.colIndex ?? 0) - (a.colIndex ?? 0);
+    })
     .map(c => {
       const maxMatch = c.header.match(/out of\s+(\d+)/i) || c.header.match(/\/(\d+)/);
       const max = maxMatch ? parseInt(maxMatch[1], 10) : 15;
@@ -551,7 +705,7 @@ export function parseStudentRecord(raw) {
         tier: tierInfo.tier,
         tierNum: tierInfo.tierNum,
         color: tierInfo.color,
-        testedAt: c.year || '2026-2027',
+        testedAt: c.label || c.year || '2026-2027',
         parsed: c.parsed
       };
     });

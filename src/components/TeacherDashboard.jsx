@@ -385,31 +385,43 @@ export default function TeacherDashboard({
                     <div className="text-left bg-white p-2 rounded-lg border border-slate-100">
                       <div className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1">
                         <Calculator className="w-3 h-3 text-indigo-600" />
-                        <span className="truncate">{headline.math ? 'Math CA' : 'Math Score'}</span>
+                        <span className="truncate">
+                          {headline.math ? `Math CA${headline.math.period ? ` (${headline.math.period})` : ''}` : 'Math Score'}
+                        </span>
                       </div>
                       <div className="text-xs font-black text-slate-900 mt-1 truncate">
                         {headline.math?.parsed.latest ? `${headline.math.parsed.latest}%` : 'N/A'}
                       </div>
-                      {headline.math?.parsed.history.length > 1 && (
+                      {headline.math?.checkpointTrail?.length > 1 ? (
+                        <div className="text-[9px] text-slate-400 font-mono mt-0.5 truncate" title={headline.math.checkpointTrail.map(c => `${c.label}: ${c.value}%`).join(' → ')}>
+                          {headline.math.checkpointTrail.map(c => `${c.label}: ${c.value}%`).join(' → ')}
+                        </div>
+                      ) : headline.math?.parsed.history.length > 1 ? (
                         <div className="text-[9px] text-slate-400 font-mono mt-0.5 truncate">
                           {headline.math.parsed.history.slice(-3).join(' → ')}
                         </div>
-                      )}
+                      ) : null}
                     </div>
 
                   </div>
 
-                  {/* Year-over-Year Trajectory Snippet */}
+                  {/* Trimester & Year-over-Year Trajectory Snippet */}
                   {student.yoyComparisons.length > 0 && (
                     <div className="mt-2.5 space-y-1">
                       {student.yoyComparisons.slice(0, 2).map((comp) => (
                         <div key={comp.family} className="flex items-center justify-between text-[11px] bg-slate-50 px-2 py-1 rounded-md border border-slate-100">
                           <span className="text-slate-600 font-semibold truncate pr-1">
                             {comp.family}
+                            {comp.shortTransition ? (
+                              <span className="text-[10px] text-slate-400 font-normal ml-1">
+                                ({comp.shortTransition})
+                              </span>
+                            ) : null}
                           </span>
                           <span className={`text-[10px] font-bold shrink-0 px-1.5 py-0.2 rounded ${
-                            comp.growth.status === 'growth' ? 'bg-emerald-100 text-emerald-800' :
-                            comp.growth.status === 'decline' ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-800'
+                            comp.growth.isGrowth ? 'bg-emerald-100 text-emerald-800' :
+                            comp.growth.isSignificantDecline ? 'bg-rose-100 text-rose-800' :
+                            comp.growth.isDecline ? 'bg-amber-100 text-amber-800' : 'bg-slate-200 text-slate-700'
                           }`}>
                             {comp.prev.parsed.latest} → {comp.curr.parsed.latest}
                           </span>
