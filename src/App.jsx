@@ -11,9 +11,11 @@ import {
   SUPER_ADMIN_EMAIL, 
   DISTRICT_LOGO, 
   isValidStaffEmail,
-  GAS_WEB_APP_URL
+  GAS_WEB_APP_URL,
+  APP_SECRET_TOKEN
 } from './config/constants';
 import { parseStudentRecord, findTeacherForUser } from './utils/dataParser';
+import { fetchIlluminateData } from './services/api';
 
 import { 
   ShieldAlert, 
@@ -135,41 +137,25 @@ export default function App() {
   }, []);
 
   // Fetch live data from Google Apps Script Web App
-  // Plain fetch with redirect: 'follow' and NO custom headers (prevents CORS preflight failures on 302 redirects)
   const fetchLiveData = useCallback(async (tokenOrEmail, overrideUser = null) => {
     setIsLoading(true);
     setFetchError(null);
 
-    let url = GAS_WEB_APP_URL;
-    if (tokenOrEmail && typeof tokenOrEmail === 'string' && tokenOrEmail.includes('@') && tokenOrEmail === SUPER_ADMIN_EMAIL) {
-      url += `?test_email=${encodeURIComponent(tokenOrEmail)}`;
+    const queryParams = new URLSearchParams({
+      appToken: APP_SECRET_TOKEN || ''
+    });
+    if (tokenOrEmail && typeof tokenOrEmail === 'string' && tokenOrEmail.includes('@')) {
+      queryParams.set('email', tokenOrEmail.trim().toLowerCase());
     } else if (tokenOrEmail && typeof tokenOrEmail === 'string' && tokenOrEmail.length > 40 && !tokenOrEmail.includes('@')) {
-      url += `?id_token=${encodeURIComponent(tokenOrEmail)}`;
+      queryParams.set('id_token', tokenOrEmail.trim());
     } else {
-      url += `?test_email=${encodeURIComponent(SUPER_ADMIN_EMAIL)}`;
+      queryParams.set('email', SUPER_ADMIN_EMAIL);
     }
-
-    setFetchUrl(url);
+    const computedUrl = `${GAS_WEB_APP_URL}?${queryParams.toString()}`;
+    setFetchUrl(computedUrl);
 
     try {
-      const response = await fetch(url, {
-        method: 'GET',
-        redirect: 'follow'
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP Error ${response.status}: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-
-      if (data.error) {
-        throw new Error(data.error);
-      }
-
-      if (!data.students || !Array.isArray(data.students)) {
-        throw new Error("Invalid response format: 'students' array missing from Google Apps Script.");
-      }
+      const data = await fetchIlluminateData(tokenOrEmail);
 
       // Parse students using dynamic multi-year & multi-tab parser
       const parsedStudents = data.students.map(parseStudentRecord);
@@ -183,7 +169,17 @@ export default function App() {
       setIsLoading(false);
     } catch (err) {
       console.error('Live GAS API fetch failed:', err);
-      setFetchError(err.message || 'Failed to fetch live data from Google Apps Script');
+      const isForbidden = err.isForbidden || (err.message && (
+        err.message.toLowerCase().includes('forbidden') ||
+        err.message.toLowerCase().includes('unauthorized') ||
+        err.message.toLowerCase().includes('invalid app token')
+      ));
+
+      if (isForbidden) {
+        setFetchError(err.message || 'Access Denied: You are not authorized to view student records on this roster.');
+      } else {
+        setFetchError(err.message || 'Failed to fetch live data from Google Apps Script');
+      }
       setIsLoading(false);
     }
   }, [applyInitialRoutingAndFilters]);
@@ -537,10 +533,14 @@ export default function App() {
                   </div>
                   <div className="space-y-1">
                     <h3 className="text-base font-bold text-rose-900">
-                      Live Google Apps Script Fetch Error
+                      {fetchError.toLowerCase().includes('access denied') || fetchError.toLowerCase().includes('forbidden') || fetchError.toLowerCase().includes('unauthorized')
+                        ? 'Access Denied / Unauthorized Account'
+                        : 'Live Google Apps Script Fetch Error'}
                     </h3>
                     <p className="text-xs text-slate-600">
-                      Could not retrieve live student records. The exact error returned by the network or backend is shown below:
+                      {fetchError.toLowerCase().includes('access denied') || fetchError.toLowerCase().includes('forbidden') || fetchError.toLowerCase().includes('unauthorized')
+                        ? 'Your Google account was authenticated, but does not have permission to view student assessment records on this roster.'
+                        : 'Could not retrieve live student records. The exact error returned by the network or backend is shown below:'}
                     </p>
                   </div>
                 </div>
