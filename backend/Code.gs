@@ -23,7 +23,7 @@
  * ==============================================================================
  */
 
-const ROSTER_TAB_NAMES = ['Roster', 'Roster Tab'];
+const ROSTER_TAB_NAMES = ['Illuminate Roster', 'Roster', 'Roster Tab'];
 const ALLOWED_DOMAINS = ['wvusd.org', 'sub.wvusd.org'];
 
 // Demographic headers to skip when building raw assessment maps
@@ -331,6 +331,7 @@ function resolveUserAccess_(email, allStudents, rbacContext, usersSheet) {
       name: 'Site Administrator / Specialist',
       role: 'SiteAdmin',
       school: assignedSites.join(','),
+      assignedSites: assignedSites,
       authorized: true
     };
   }
@@ -423,7 +424,7 @@ function isRawSchoolCodeOrPlaceholder_(val) {
 }
 
 function analyzeSheetHeaders(headerRow, tabName, isRosterFallback) {
-  const isRosterTabContext = /^roster(?:\s*tab)?$/i.test((tabName || '').toString().trim());
+  const isRosterTabContext = /^(?:illuminate\s*)?roster(?:\s*tab)?$/i.test((tabName || '').toString().trim());
   const mapping = [];
 
   for (let c = 0; c < headerRow.length; c++) {

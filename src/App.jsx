@@ -149,7 +149,9 @@ export default function App() {
     } else if (tokenOrEmail && typeof tokenOrEmail === 'string' && tokenOrEmail.length > 40 && !tokenOrEmail.includes('@')) {
       queryParams.set('id_token', tokenOrEmail.trim());
     } else {
-      queryParams.set('email', SUPER_ADMIN_EMAIL);
+      setFetchError('Access Denied: You must authenticate with an authorized @wvusd.org staff account.');
+      setIsLoading(false);
+      return;
     }
     const computedUrl = `${GAS_WEB_APP_URL}?${queryParams.toString()}`;
     setFetchUrl(computedUrl);
@@ -176,6 +178,13 @@ export default function App() {
       ));
 
       if (isForbidden) {
+        sessionStorage.removeItem('wvusd_staff_token');
+        sessionStorage.removeItem('wvusd_staff_user');
+        sessionStorage.clear();
+        setUser(null);
+        setStudents([]);
+        setMeta({});
+        setAuthError('forbidden');
         setFetchError(err.message || 'Access Denied: You are not authorized to view student records on this roster.');
       } else {
         setFetchError(err.message || 'Failed to fetch live data from Google Apps Script');
@@ -237,7 +246,7 @@ export default function App() {
     if (user && !hasInitialFetchedRef.current) {
       hasInitialFetchedRef.current = true;
       const cachedToken = sessionStorage.getItem('wvusd_staff_token');
-      fetchLiveData(cachedToken || user.email || SUPER_ADMIN_EMAIL, user);
+      fetchLiveData(cachedToken || user.email, user);
     }
   }, [fetchLiveData, user]);
 
@@ -464,6 +473,18 @@ export default function App() {
 
               {/* Rendered Google GSI Button Container */}
               <div id="gsi-signin-container" className="flex justify-center min-h-[44px]" />
+
+              {fetchError && (
+                <div className="p-4 bg-rose-50 rounded-2xl border border-rose-200 text-xs text-rose-700 text-left space-y-1.5 animate-fade-in">
+                  <div className="flex items-center gap-2 font-bold text-rose-900">
+                    <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0" />
+                    <span>Access Denied / Unauthorized Account</span>
+                  </div>
+                  <p className="text-rose-700 leading-relaxed font-medium">
+                    {fetchError}
+                  </p>
+                </div>
+              )}
 
               <div className="text-xs text-slate-500 pt-3 border-t border-slate-100 leading-relaxed">
                 Access restricted to authenticated <strong className="text-slate-700">@wvusd.org</strong> and <strong className="text-slate-700">@sub.wvusd.org</strong> staff accounts

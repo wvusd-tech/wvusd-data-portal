@@ -22,7 +22,10 @@ export async function fetchIlluminateData(userEmailOrToken) {
   } else if (typeof userEmailOrToken === 'string' && userEmailOrToken.length > 40 && !userEmailOrToken.includes('@')) {
     queryParams.set('id_token', userEmailOrToken.trim());
   } else {
-    queryParams.set('email', SUPER_ADMIN_EMAIL);
+    const error = new Error('Access Denied: Valid staff authentication credential is required.');
+    error.status = 'Forbidden';
+    error.isForbidden = true;
+    throw error;
   }
 
   const url = `${GAS_WEB_APP_URL}?${queryParams.toString()}`;
