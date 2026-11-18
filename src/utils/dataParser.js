@@ -274,9 +274,26 @@ export function extractMetricInfo(header) {
     return { year: null, rest: '', family: '', period: null, periodOrder: 99, label: '' };
   }
   
-  const yearMatch = header.match(/^(\d{4}-\d{4})\s+(.*)$/);
-  const year = yearMatch ? yearMatch[1] : null;
-  const rest = (yearMatch ? yearMatch[2] : header).trim();
+  let year = null;
+  let rest = header.trim();
+
+  // Match leading 4-digit or 2-digit school year: e.g. "2026-2027 Math", "26-27 Tri 1", "SY 26-27 Tri 2"
+  const leadingYearMatch = rest.match(/^(?:sy\s*)?((?:20)?(\d{2})\s*[-/–]\s*(?:20)?(\d{2}))\s+(.*)$/i);
+  if (leadingYearMatch) {
+    const y1 = leadingYearMatch[2].length === 2 ? `20${leadingYearMatch[2]}` : leadingYearMatch[2];
+    const y2 = leadingYearMatch[3].length === 2 ? `20${leadingYearMatch[3]}` : leadingYearMatch[3];
+    year = `${y1}-${y2}`;
+    rest = leadingYearMatch[4].trim();
+  } else {
+    // Check if 4-digit or 2-digit year is embedded anywhere in header
+    const embeddedYear = rest.match(/\b(20\d{2})\s*[-/–]\s*(?:20)?(\d{2})\b/) || rest.match(/\b(\d{2})\s*[-/–]\s*(\d{2})\b/);
+    if (embeddedYear) {
+      const y1 = embeddedYear[1].length === 4 ? embeddedYear[1] : `20${embeddedYear[1]}`;
+      const y2 = embeddedYear[2].length === 4 ? embeddedYear[2] : `20${embeddedYear[2]}`;
+      year = `${y1}-${y2}`;
+    }
+  }
+
   const { period, periodOrder } = extractPeriodInfo(rest);
 
   let family = rest;
