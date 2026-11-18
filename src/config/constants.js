@@ -2,7 +2,7 @@
 
 export const GAS_WEB_APP_URL =
   (typeof import.meta !== "undefined" && import.meta.env?.VITE_APPS_SCRIPT_URL) ||
-  "https://script.google.com/macros/s/AKfycbxNg1wur7WvwrqOO-IFFZhv8l75N1ZxhGZY3VqS7WhfIZjimaYrYShLAQ_LhfCHlpMQ/exec";
+  "https://script.google.com/macros/s/AKfycbxS4yHgtYtXhtil07haJpdkIdf_wC__IgG6vrZAAALP-kPwSm11VM7u0OoQ8uN-wYux/exec";
 
 export const APP_SECRET_TOKEN =
   (typeof import.meta !== "undefined" && import.meta.env?.VITE_APP_SECRET_TOKEN) ||
