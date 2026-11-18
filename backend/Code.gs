@@ -437,6 +437,17 @@ function analyzeSheetHeaders(headerRow, tabName, isRosterFallback) {
       fieldType = 'STUDENT_ID';
     } else if (isRosterTabContext && c === 14) {
       fieldType = 'SCHOOL_NAME';
+    } else if (
+      isRosterTabContext &&
+      (cleanLower === 'email1' ||
+        cleanLower === 'email' ||
+        cleanLower.indexOf('email1') !== -1 ||
+        cleanLower.indexOf('teacher email') !== -1 ||
+        cleanLower.indexOf('staff email') !== -1 ||
+        cleanLower.indexOf('counselor email') !== -1 ||
+        c === 5)
+    ) {
+      fieldType = 'STAFF_EMAIL';
     } else if (isRosterTabContext && c !== 14) {
       fieldType = 'OTHER';
     } else if (!isRosterTabContext) {
@@ -530,7 +541,7 @@ function ingestDynamicSheetTab(rows, tabName, studentsMap, rbacContext, isRoster
           student.staffName = strVal;
           student.teacher = strVal;
         }
-        if (c === 5 && !student.staffEmail) {
+        if ((colMeta.fieldType === 'STAFF_EMAIL' || c === 5) && !student.staffEmail && strVal.indexOf('@') !== -1) {
           student.staffEmail = strVal.toLowerCase();
           student.teacherEmail = strVal.toLowerCase();
         }
